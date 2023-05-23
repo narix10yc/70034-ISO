@@ -75,7 +75,6 @@ class IBM27Architecture(TNArchitecture):
         self.compute_neighbours()
 
 
-
 class IBM16Architecture(TNArchitecture):
     def __init__(self):
         super().__init__(16)
@@ -104,7 +103,6 @@ class TNSimulator():
             self.gamma.append(np.array([1,0], dtype=np.complex128).reshape((2,)+(1,)*len(neib)))
 
     
-
     def get_statistics(self):
         def get_size(npara):
             b = 16 * npara # 128 bits per parameter
@@ -170,47 +168,6 @@ class TNSimulator():
 
         return flops
 
-
-    
-    def get_amplitude_original(self, id: str|int):
-        def locate_target(index_edge, target_node): 
-            results = []
-            for i in range(len(index_edge)):
-                if index_edge[i][1] == target_node:
-                    results.append((index_edge[i][0], i))
-            if len(results) == 0:
-                raise ValueError(f"Cannot find target node {index_edge} {target_node}")
-            return results
-
-        id = int(id, 2) if isinstance(id, str) else id
-        
-        tmp = self.gamma[0][id%2].copy()
-        tmp_index_edge = [(0, each) for each in self.neighbours[0]]
-        id //= 2
-        for next_node in range(1, self.nqubits):
-            next_neib = self.neighbours[next_node]
-            n1 = len(tmp_index_edge)
-            n2 = len(next_neib)
-            tmp_idx = list(range(n1))
-            next_idx = list(range(n1, n1+n2))
-
-            tmp_index_edge += [(next_node, each) for each in next_neib]
-
-            source_and_leg_idx = locate_target(tmp_index_edge, next_node)
-            for count, (source_node, leg_idx) in enumerate(source_and_leg_idx):
-                tmp_idx[leg_idx] = 51 - count # indices to be contracted starts from 51 reverse
-                next_idx[next_neib.index(source_node)] = 51 - count
-                tmp_index_edge.remove((source_node, next_node))
-                tmp_index_edge.remove((next_node, source_node))
-
-            n_contraction = len(source_and_leg_idx)
-            out_idx = [each for each in tmp_idx if each < 51 - n_contraction] + [each for each in next_idx if each < 51 - n_contraction]
-
-            tmp = np.einsum(tmp, tmp_idx, self.gamma[next_node][id%2], next_idx, out_idx)
-            id //= 2
-
-        return tmp
-    
 
     def get_amplitude(self, id: str|int):
         def locate_target(index_edge, target_node): 
@@ -360,74 +317,6 @@ class TNSimulator():
         return bitstrings
         
 
-    def two_qubit_gate(self, k, l, U):
-        def prod(*arr):
-            p = 1
-            for each in arr:
-                p *= each 
-            return p
-        
-        if not l in self.neighbours[k]:
-            raise ValueError(f"Qubit {k} and {l} are not connected.")
-    
-        nk = len(self.neighbours[k])
-        nl = len(self.neighbours[l])
-        k_idx = list(range(nk)) 
-        l_idx = list(range(nk, nk+nl)) 
-        k_phy_idx_in = nk+nl
-        l_phy_idx_in = nk+nl+1
-        k_phy_idx_out = nk+nl+2
-        l_phy_idx_out = nk+nl+3
-        idx_l_in_k = self.neighbours[k].index(l)
-        idx_k_in_l = self.neighbours[l].index(k)
-        k_idx[idx_l_in_k] = 51
-        l_idx[idx_k_in_l] = 51
-
-        gate_idx = [k_phy_idx_out, l_phy_idx_out, k_phy_idx_in, l_phy_idx_in]
-        out_idx = [k_phy_idx_out] + [each for each in k_idx if each != 51] + [l_phy_idx_out] + [each for each in l_idx if each != 51]
-
-        k_idx = [k_phy_idx_in] + k_idx
-        l_idx = [l_phy_idx_in] + l_idx
-
-        shape_k = list(self.gamma[k].shape)
-        shape_l = list(self.gamma[l].shape)
-
-        shape_k_without_l = shape_k[:idx_l_in_k+1] + shape_k[idx_l_in_k+2:]
-        shape_l_without_k = shape_l[:idx_k_in_l+1] + shape_l[idx_k_in_l+2:]
-        dim_left = prod(*shape_k_without_l)
-        dim_right = prod(*shape_l_without_k)
-        dim_local = shape_k[idx_l_in_k+1]
-
-        tmp = np.einsum(self.gamma[k], k_idx, self.gamma[l], l_idx, U, gate_idx, out_idx).reshape(dim_left, dim_right)
-
-        u, s, vh = np.linalg.svd(tmp)
-        
-        thres_chi = (s > self.xi).sum()
-        new_chi = min(thres_chi, self.max_chi)
-        if new_chi > dim_local:
-            dim_local = new_chi
-
-        s *= ((s**2).sum() / (s[:dim_local]**2).sum()) ** 0.5
-
-        new_shape_k = shape_k[:idx_l_in_k+1] + shape_k[idx_l_in_k+2:] + [dim_local]
-        new_gamma_k = (u[:,:dim_local] * s[None, :dim_local]).reshape(new_shape_k)
-
-        idx_shuffle_k_in = list(range(nk)) + [51]
-        idx_shuffle_k_out = list(range(nk))
-        idx_shuffle_k_out.insert(idx_l_in_k+1, 51)
-
-        self.gamma[k] = np.einsum(new_gamma_k, idx_shuffle_k_in, idx_shuffle_k_out)
-
-        new_shape_l = [dim_local] + shape_l[:idx_k_in_l+1] + shape_l[idx_k_in_l+2:]
-        new_gamma_l = vh[:dim_local, :].reshape(new_shape_l)
-
-        idx_shuffle_l_in = [51] + list(range(nl))
-        idx_shuffle_l_out = list(range(nl))
-        idx_shuffle_l_out.insert(idx_k_in_l+1, 51)
-
-        self.gamma[l] = np.einsum(new_gamma_l, idx_shuffle_l_in, idx_shuffle_l_out)
-    
-
     def two_qubit_gate_merge_split(self, k, l, U):
         try:
             idx_l_in_k = self.neighbours[k].index(l)
@@ -529,22 +418,13 @@ class TNSimulator():
         new_chi_local = min(propose_new_chi_local, self.max_chi)
 
         Theta1 = Theta.reshape(2, 2*chi_local, 2, 2*chi_local)
-        tmp_sum1 = np.einsum('ibjc -> bc', Theta1 * Theta1.conj()).real
-        # print('sum1', tmp_sum1.round(4))
-
-        # print('s', s.round(4))
 
         s *= ((s ** 2).sum() / (s[:new_chi_local] ** 2).sum() ) ** 0.5
-
-        # print('s2', s.round(4))
 
         updated_r_k = (u[:, :new_chi_local] * s[None, :new_chi_local]).reshape(2, 2*chi_local, new_chi_local) # (i) (beta) (t)
         updated_r_l = vh[:new_chi_local, :].reshape(new_chi_local, 2, 2*chi_local) # (t) (j) (gamma)
 
         Theta2 = np.einsum('ibt, tjc -> ibjc', updated_r_k, updated_r_l)
-        tmp_sum2 = np.einsum('ibjc -> bc', Theta2 * Theta2.conj()).real
-        # print('sum2', tmp_sum2.round(4))
-
 
         shape_k_b4_state2_tranpose = shape_k[:idx_l_in_k+1] + shape_k[idx_l_in_k+2:] + [new_chi_local]
         shape_l_b4_state2_tranpose = shape_l[:idx_k_in_l+1] + shape_l[idx_k_in_l+2:] + [new_chi_local]
@@ -556,7 +436,7 @@ class TNSimulator():
 
 
     def two_qubit_gate_decomposed(self, k, l, U_decomp):
-        pass
+        raise NotImplementedError()
 
 
     def apply_instruction(self, ins: GateInstruction, method='qr-svd'):
@@ -589,7 +469,6 @@ class TNSimulator():
             qubit = ins.t_qubit[0]
             state = ins.params[0]
             self.collapse(qubit, state)
-
 
 
     def collapse(self, qubit, state):
