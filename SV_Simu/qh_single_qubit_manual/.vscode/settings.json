@@ -1,0 +1,15 @@
+{
+    "files.associations": {
+        "immintrin.h": "c",
+        "x86gprintrin.h": "c",
+        "stddef.h": "c",
+        "xmmintrin.h": "c",
+        "cmath": "c",
+        "single_qubit.h": "c",
+        "qh_type.h": "c",
+        "stdio.h": "c",
+        "tmp": "c",
+        "stdlib.h": "c",
+        "two_qubit_manual.h": "c"
+    }
+}

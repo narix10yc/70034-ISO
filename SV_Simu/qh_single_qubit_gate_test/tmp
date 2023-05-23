@@ -1,0 +1,31 @@
+// Prompt Method
+void timeit_prompt_on_0() {
+    apply_on_k_prompt_matrix(n, 0, *amp, gate);
+}
+void timeit_prompt_on_1() {
+    apply_on_k_prompt_matrix(n, 1, *amp, gate);
+}
+void timeit_prompt_on_2() {
+    apply_on_k_prompt_matrix(n, 2, *amp, gate);
+}
+void timeit_prompt_on_3() {
+    apply_on_k_prompt_matrix(n, 3, *amp, gate);
+}
+void timeit_prompt_on_4() {
+    apply_on_k_prompt_matrix(n, 4, *amp, gate);
+}
+void timeit_prompt_on_5() {
+    apply_on_k_prompt_matrix(n, 5, *amp, gate);
+}
+void timeit_prompt_on_6() {
+    apply_on_k_prompt_matrix(n, 6, *amp, gate);
+}
+void timeit_prompt_on_7() {
+    apply_on_k_prompt_matrix(n, 7, *amp, gate);
+}
+void timeit_prompt_on_8() {
+    apply_on_k_prompt_matrix(n, 8, *amp, gate);
+}
+void timeit_prompt_on_9() {
+    apply_on_k_prompt_matrix(n, 9, *amp, gate);
+}

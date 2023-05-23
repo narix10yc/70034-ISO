@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "immintrin.h": "c",
+        "x86gprintrin.h": "c",
+        "stddef.h": "c",
+        "xmmintrin.h": "c"
+    }
+}

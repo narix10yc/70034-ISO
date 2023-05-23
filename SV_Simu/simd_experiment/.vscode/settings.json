@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "simd.h": "c",
+        "random": "c",
+        "immintrin.h": "c"
+    }
+}
