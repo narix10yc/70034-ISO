@@ -83,6 +83,17 @@ class IBM16Architecture(TNArchitecture):
 
 
 class TNSimulator():
+    """ 
+    TN simulator takes in an architecture and a circuit. The circuit is assumed to have been 
+    transpiled wrt to the architecture.
+
+    Parameters:
+        gamma: tensors.
+        TODO: the followings are for tmp uses.
+        classical_reg: classical register
+        contraction_order: either 'default' or a list of integers representing the contraction order. 
+            the contraction order for 'default' is list(range(nqubits))
+    """
     def __init__(self, architecture: TNArchitecture, circuit: QHCircuit, xi=1e-4, max_chi=2**10):
         self.architecture = architecture
         self.neighbours = architecture.neighbours
@@ -104,6 +115,10 @@ class TNSimulator():
 
     
     def get_statistics(self):
+        """
+        Get the expected contraction FLOP.
+        TODO: consider two-layer contraction.
+        """
         def get_size(npara):
             b = 16 * npara # 128 bits per parameter
             if b < 1024:
@@ -210,6 +225,7 @@ class TNSimulator():
 
         return tmp
 
+
     def get_all_amplitudes(self, verbose=False):
         from tqdm import tqdm
         return np.array([self.get_amplitude(i) for i in tqdm(range(2**self.nqubits), disable=not verbose)])
@@ -238,12 +254,15 @@ class TNSimulator():
         return np.array(amps)
 
 
-
     def single_qubit_gate(self, k, U):
         self.gamma[k] = np.einsum('im, m... -> i...', U, self.gamma[k])
     
 
     def get_measurement_probability(self, qubit, state=0):
+        """
+        TODO: re-write this code.
+        Remark: This method is an early version. Rarely used later.
+        """
         def locate_target(index_edge, target_node): 
             results = []
             for i in range(len(index_edge)):
@@ -298,6 +317,10 @@ class TNSimulator():
 
 
     def sample_bitstring(self, repetition, verbose=False):
+        """
+        Return: list<string>
+            Each string is a length-n binary string representing measurement outcomes.
+        """
         from tqdm import tqdm
         bitstrings = []
         for _ in tqdm(range(repetition), disable=not verbose):
@@ -331,7 +354,6 @@ class TNSimulator():
             return list(range(bond_idx+1)) + [dimension-1] + list(range(bond_idx+1, dimension-1))
 
         shape_k = list(self.gamma[k].shape)
-        # print(shape_k)
         shape_l = list(self.gamma[l].shape)
 
         dim_k = len(shape_k)
@@ -341,22 +363,21 @@ class TNSimulator():
         total_dim_l = np.prod(shape_l)
 
         chi_local = shape_k[idx_l_in_k+1]
-
-        total_dim_k_no_l = total_dim_k // chi_local // 2
-        total_dim_l_no_k = total_dim_l // chi_local // 2
         
-        # Step 1: reshape 
+        # Eeshape 
         gamma_k = np.transpose(self.gamma[k], stage_1_transpose_key(dim_k, idx_l_in_k)).reshape(-1, 2, chi_local) # (k1 k2 k3), (m), (alpha)
         gamma_l = np.transpose(self.gamma[l], stage_1_transpose_key(dim_l, idx_k_in_l)).reshape(-1, 2, chi_local) # (l1 l2 l3), (n), (alpha)
 
         Theta = np.einsum('ijmn, kma, lna -> ikjl', U, gamma_k, gamma_l).reshape(total_dim_k//chi_local, -1) # (i k1 k2 k3) (j l1 l2 l3)
 
+        # SVD
         u, s, vh = np.linalg.svd(Theta)
         propose_new_chi_local = (s > self.xi).sum()
         new_chi_local = min(propose_new_chi_local, self.max_chi)
 
-        s *= ((s ** 2).sum() / (s[:new_chi_local] ** 2).sum() ) ** 0.5
+        s *= ((s ** 2).sum() / (s[:new_chi_local] ** 2).sum() ) ** 0.5 # rescale
 
+        # Truncate, calculate new dimension
         updated_gamma_k = (u[:, :new_chi_local] * s[None, :new_chi_local]).reshape(2, -1, new_chi_local) # (i) (k1 k2 k3) (t)
 
         updated_gamma_l = vh[:new_chi_local, :].reshape(new_chi_local, 2, -1) # (t) (j) (l1 l2 l3)
@@ -385,9 +406,7 @@ class TNSimulator():
         def stage_2_transpose_key(dimension, bond_idx):
             return list(range(bond_idx+1)) + [dimension-1] + list(range(bond_idx+1, dimension-1))
 
-
         shape_k = list(self.gamma[k].shape)
-        # print(shape_k)
         shape_l = list(self.gamma[l].shape)
 
         dim_k = len(shape_k)
@@ -401,11 +420,9 @@ class TNSimulator():
         total_dim_k_no_l = total_dim_k // chi_local // 2
         total_dim_l_no_k = total_dim_l // chi_local // 2
         
-        # Step 1: reshape 
         gamma_k = np.transpose(self.gamma[k], stage_1_transpose_key(dim_k, idx_l_in_k)).reshape(-1, 2*chi_local) # (k1 k2 k3), (m alpha)
         gamma_l = np.transpose(self.gamma[l], stage_1_transpose_key(dim_l, idx_k_in_l)).reshape(-1, 2*chi_local) # (l1 l2 l3), (n alpha)
 
-        # print(gamma_k.shape)
         q_k, r_k = linalg.rq(gamma_k) # q_k: (k1 k2 k3), (beta);  r_k: (beta),  (m alpha)
         q_l, r_l = linalg.rq(gamma_l) # q_l: (l1 l2 l3), (gamma); r_l: (gamma), (n alpha)
 
@@ -417,14 +434,14 @@ class TNSimulator():
         propose_new_chi_local = (s > self.xi).sum()
         new_chi_local = min(propose_new_chi_local, self.max_chi)
 
-        Theta1 = Theta.reshape(2, 2*chi_local, 2, 2*chi_local)
+        # Theta1 = Theta.reshape(2, 2*chi_local, 2, 2*chi_local)
 
         s *= ((s ** 2).sum() / (s[:new_chi_local] ** 2).sum() ) ** 0.5
 
         updated_r_k = (u[:, :new_chi_local] * s[None, :new_chi_local]).reshape(2, 2*chi_local, new_chi_local) # (i) (beta) (t)
         updated_r_l = vh[:new_chi_local, :].reshape(new_chi_local, 2, 2*chi_local) # (t) (j) (gamma)
 
-        Theta2 = np.einsum('ibt, tjc -> ibjc', updated_r_k, updated_r_l)
+        # Theta2 = np.einsum('ibt, tjc -> ibjc', updated_r_k, updated_r_l)
 
         shape_k_b4_state2_tranpose = shape_k[:idx_l_in_k+1] + shape_k[idx_l_in_k+2:] + [new_chi_local]
         shape_l_b4_state2_tranpose = shape_l[:idx_k_in_l+1] + shape_l[idx_k_in_l+2:] + [new_chi_local]
@@ -483,6 +500,10 @@ class TNSimulator():
 
 
     def simulate(self, method='qr-svd', verbose=False):
+        """
+        Input:
+            method: currently support 'qr-svd' and 'merge-split'
+        """
         from tqdm import tqdm
         for ins in tqdm(self.circuit.instructions, disable=not verbose):
             self.apply_instruction(ins, method=method)
